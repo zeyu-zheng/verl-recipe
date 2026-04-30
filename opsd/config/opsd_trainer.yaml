@@ -78,7 +78,6 @@ data:
 
 reward_model:
   enable: False
-  use_reward_loop: False
 
 trainer:
   project_name: ${oc.env:WANDB_PROJECT,verl-opsd}

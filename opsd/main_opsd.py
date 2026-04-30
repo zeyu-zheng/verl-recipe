@@ -33,6 +33,7 @@ import hydra
 import ray
 from omegaconf import OmegaConf
 
+from verl.experimental.reward_loop import migrate_legacy_reward_impl
 from verl.trainer.ppo.reward import get_custom_reward_fn
 from verl.trainer.ppo.utils import need_reference_policy
 
@@ -44,6 +45,9 @@ def main(config):
 
 def run_opsd(config) -> None:
     os.environ["ENSURE_CUDA_VISIBLE_DEVICES"] = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    # Bridge legacy ``reward_model.*`` / ``custom_reward_function.*`` /
+    # ``sandbox_fusion.*`` overrides onto the post-v0.7.1 ``reward.*`` schema.
+    config = migrate_legacy_reward_impl(config)
     if not ray.is_initialized():
         ray.init(
             runtime_env={
@@ -104,11 +108,11 @@ class TaskRunner:
 
         from verl.workers.reward_manager import get_reward_manager_cls
 
-        reward_manager_name = config.reward_model.get("reward_manager", "naive")
+        reward_manager_name = OmegaConf.select(config, "reward.reward_manager.name", default="naive")
         reward_manager_cls = get_reward_manager_cls(reward_manager_name)
 
         compute_score = get_custom_reward_fn(config)
-        reward_kwargs = dict(config.reward_model.get("reward_kwargs", {}))
+        reward_kwargs = dict(OmegaConf.select(config, "reward.reward_kwargs", default={}) or {})
         # Training does not consume the reward; we still build one for symmetry
         # with verl's trainer plumbing and to enable rollout-reward dumping.
         reward_fn = reward_manager_cls(
