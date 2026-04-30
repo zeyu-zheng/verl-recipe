@@ -1,0 +1,94 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# OPSD (On-Policy Self-Distillation) recipe — student rolls out, frozen
+# teacher (colocated reference module) sees an additional ``teacher_raw_prompt``
+# context and the student's own response, and the actor backprops a JSD
+# between the two distributions. We never call any update_ref path. JSD is
+# computed inside ``update_actor_opsd`` over the full vocabulary, so
+# ``ppo_max_token_len_per_gpu`` must fit ``max_teacher_prompt_length +
+# max_response_length`` and ``model.use_remove_padding`` must stay False.
+
+max_model_len: 6144
+
+actor_rollout_ref:
+  hybrid_engine: True
+  actor:
+    fsdp_config:
+      model_dtype: bfloat16
+    ppo_mini_batch_size: 16
+    use_dynamic_bsz: True
+    ppo_max_token_len_per_gpu: 12288
+    optim:
+      lr: 5e-6
+  model:
+    trust_remote_code: True
+    use_remove_padding: False
+  ref:
+    fsdp_config:
+      model_dtype: bfloat16
+    log_prob_micro_batch_size_per_gpu: 1
+  rollout:
+    name: vllm
+    gpu_memory_utilization: 0.45
+    log_prob_micro_batch_size_per_gpu: 1
+    max_num_batched_tokens: ${max_model_len}
+    max_model_len: ${max_model_len}
+    n: 8
+    val_kwargs:
+      top_p: 0.95
+      temperature: 0.6
+      n: 4
+      do_sample: True
+
+critic:
+  enable: False
+
+algorithm:
+  use_kl_in_reward: False
+  opsd:
+    # forward-KL(teacher || student); 0.5 -> symmetric JSD, 1.0 -> reverse-KL
+    beta: 0.0
+    # softmax temperature inside the JSD log-softmax
+    temperature: 1.0
+    # per-token JSD ceiling; null disables (recommended to set per-model in
+    # the launcher to suppress a few high-divergence "style" tokens).
+    token_clip: null
+    # restrict JSD to teacher's top-k tokens; null disables
+    top_k: null
+    # pre-softmax temperature on raw forward-pass logits; TRL parity = 1.0
+    forward_temperature: 1.0
+
+data:
+  apply_chat_template_kwargs: {"enable_thinking": false}
+  filter_overlong_prompts: True
+  max_prompt_length: 2048
+  max_response_length: 4096
+  shuffle: True
+  train_batch_size: 64
+  trust_remote_code: True
+  # Cap on the tokenized ``teacher_raw_prompt`` length; longer prompts are
+  # right-truncated in ``opsd_ray_trainer._build_teacher_tensors``.
+  max_teacher_prompt_length: 8192
+
+reward_model:
+  enable: False
+  use_reward_loop: False
+
+trainer:
+  project_name: ${oc.env:WANDB_PROJECT,verl-opsd}
+  group_name: ${oc.env:EXPERIMENT,opsd}
+  experiment_name: ${oc.env:EXPERIMENT,opsd}
+  n_gpus_per_node: 4
+  nnodes: 1
+  save_freq: 0
+  test_freq: 200
+  max_actor_ckpt_to_keep: 1
+  total_epochs: 1
+  val_before_train: False
+  balance_batch: True

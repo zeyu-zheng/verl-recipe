@@ -1,0 +1,9 @@
+# OPSD — pinned to a fork branch carrying the recipe-side hooks (custom reward, dataset)
+UPSTREAM=https://github.com/zeyu-zheng/verl.git
+MODE=branch
+BRANCH=qwen35-formal-math-v0.7.1
+PIP_INSTALL=pip install verl@git+https://github.com/zeyu-zheng/verl.git@qwen35-formal-math-v0.7.1
+GIT_SETUP=git clone https://github.com/zeyu-zheng/verl.git && cd verl && git checkout qwen35-formal-math-v0.7.1 && git submodule update --init --recursive recipe
+RECIPE_FOLDER=opsd
+NOTES=The fork branch is rebased onto upstream verl v0.7.1; once the recipe-side hooks land upstream this can move to MODE=rolling against verl-project/verl main.
+REFRESH=Recompute: (cd verl && git rev-parse HEAD); (cd verl/recipe && git rev-parse HEAD)
