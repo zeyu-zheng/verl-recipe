@@ -64,6 +64,9 @@ class DAPOTaskRunner(TaskRunner):
         tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
         processor = hf_processor(local_path, trust_remote_code=trust_remote_code, use_fast=True)
 
+        if processor is not None and not getattr(processor, "chat_template", None) and getattr(tokenizer, "chat_template", None):
+            processor.chat_template = tokenizer.chat_template
+
         resource_pool_manager = self.init_resource_pool_mgr(config)
 
         from verl.utils.dataset.rl_dataset import collate_fn
